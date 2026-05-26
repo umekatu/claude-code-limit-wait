@@ -4,8 +4,10 @@ limit-wait.py — autonomous in-session wait across a rate-limit reset.
 Run via Bash with run_in_background:true. The script blocks (polling, no model
 inference) until the binding rate-limit's reset time has passed, then exits.
 When it exits, Claude Code re-invokes the agent WITH FULL CONTEXT PRESERVED
-(no checkpoint needed — the conversation is still loaded). Token consumption
-during the wait is structurally zero (no model turns occur while it polls).
+(no checkpoint needed — the conversation is still loaded). No model turns
+occur while the poller sleeps, so the wait window itself doesn't draw down
+tokens or rate-limit budget — the normal resume cost when the agent is
+re-invoked still applies, same as any other tool result.
 
 Reads ~/.claude/usage-snapshot.json (written by usage-probe-statusline.py).
 

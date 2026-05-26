@@ -3,16 +3,18 @@
 *[日本語版 README はこちら](README_ja.md)*
 
 A small set of hooks + a Skill that let **Claude Code wait out its own
-rate-limit reset inside the same session, with zero token consumption during
-the wait and full context preserved on the other side.**
+rate-limit reset inside the same session, with no model inference running
+during the wait and full context preserved on the other side.**
 
 When the 5-hour (or 7-day) rate-limit creeps over a critical threshold, the
 hook pushes Claude into the `limit-wait` Skill. The Skill launches a small
 background poller that blocks until the binding limit's `resets_at` epoch has
-passed. Because no model turns occur while the poller sleeps, the wait is
-**structurally free** — no tokens, no money, no rate-limit budget spent. When
-the poller exits, Claude Code re-invokes the agent with the conversation
-fully loaded and it picks up exactly where it left off.
+passed. The poller is a plain `time.sleep` loop — no model turns occur while
+it waits, so **the wait window itself doesn't draw down tokens or rate-limit
+budget**. (The normal resume cost when work picks up on the other side still
+applies, the same as for any other tool result.) When the poller exits,
+Claude Code re-invokes the agent with the conversation fully loaded and it
+picks up exactly where it left off.
 
 No checkpoint files. No "please paste this prompt again". No human babysitting
 a long-running task across a quota reset.
@@ -159,8 +161,8 @@ act on it.
   closed, machine reboot, OS sleep), the wait dies with it — you'll
   continue manually.
 - **Not a way to bypass rate limits.** It just waits for them, autonomously,
-  in the background, with zero token consumption during the wait. Same
-  amount of quota, no foul.
+  in the background, without running model inference during the wait itself.
+  Same amount of quota, no foul.
 - **Not specific to Anthropic's API rate limits in general** — this targets
   the Claude Code subscription's 5h and 7d session-budget windows surfaced
   by the `/usage` dialog.
