@@ -1,0 +1,22 @@
+{
+  "_comment": "Minimal ~/.claude/settings.json wiring for claude-code-limit-wait. Adjust the python command (python vs python3 vs full path) to taste. The 'matcher' on the PostToolUse hook is the set of tool names whose results should trigger context-monitor.py — Edit/Write/Bash covers the cases where the assistant message that just landed actually has a fresh usage block.",
+
+  "statusLine": {
+    "type": "command",
+    "command": "python ~/.claude/hooks/usage-probe-statusline.py"
+  },
+
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python ~/.claude/hooks/context-monitor.py"
+          }
+        ]
+      }
+    ]
+  }
+}
