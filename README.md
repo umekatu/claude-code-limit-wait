@@ -1,5 +1,7 @@
 # claude-code-limit-wait
 
+*[日本語版 README はこちら](README_ja.md)*
+
 A small set of hooks + a Skill that let **Claude Code wait out its own
 rate-limit reset inside the same session, with zero token consumption during
 the wait and full context preserved on the other side.**
