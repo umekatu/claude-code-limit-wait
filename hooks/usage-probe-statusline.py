@@ -6,12 +6,80 @@ the latest cost / rate-limit / context-window state without growing a log.
 Also emits a one-line status string back to stdout so the user sees something
 useful in their UI.
 
+The Fable-scoped weekly limit is NOT in the stdin payload — it is displayed
+from ~/.claude/.oauth-usage-cache.json (written by oauth-usage-probe.py
+--refresh-cache). When the cache is stale this script spawns the refresh as a
+detached background process; the status line itself never blocks on network.
+
 Revert: remove the `statusLine` block from the relevant settings.json.
 Snapshot path: ~/.claude/usage-snapshot.json
 """
 import sys, json, os, time
 
 SNAPSHOT_PATH = os.path.expanduser('~/.claude/usage-snapshot.json')
+CACHE_PATH = os.path.expanduser('~/.claude/.oauth-usage-cache.json')
+REFRESH_STAMP = os.path.expanduser('~/.claude/.oauth-usage-refresh-stamp')
+PROBE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'oauth-usage-probe.py')
+CACHE_TTL = 300        # spawn a refresh when the cache is older than this
+CACHE_MAX_AGE = 1800   # hide the segment entirely when older than this
+SPAWN_COOLDOWN = 60    # min seconds between refresh spawn attempts
+
+
+def _spawn_cache_refresh(now):
+    """Detached, rate-limited background refresh of the oauth-usage cache."""
+    try:
+        try:
+            last = os.path.getmtime(REFRESH_STAMP)
+        except OSError:
+            last = 0
+        if now - last < SPAWN_COOLDOWN:
+            return
+        with open(REFRESH_STAMP, 'w') as f:
+            f.write(str(now))
+        import subprocess
+        flags = 0
+        if os.name == 'nt':
+            flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW
+        subprocess.Popen(
+            [sys.executable, PROBE_PATH, '--refresh-cache'],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL, creationflags=flags)
+    except Exception:
+        pass
+
+
+def fable_weekly_pct():
+    """Fable-scoped weekly percent from the oauth-usage cache, or None when
+    the cache is missing, too old, or the limit window already rolled over."""
+    now = time.time()
+    pct = None
+    age = None
+    try:
+        with open(CACHE_PATH, encoding='utf-8') as f:
+            cache = json.load(f)
+        age = now - float(cache.get('ts', 0))
+        if age <= CACHE_MAX_AGE:
+            from datetime import datetime, timezone
+            for lim in (cache.get('data') or {}).get('limits') or []:
+                if lim.get('kind') != 'weekly_scoped':
+                    continue
+                name = str(((lim.get('scope') or {}).get('model') or {}).get('display_name') or '')
+                if 'fable' not in name.lower():
+                    continue
+                ra = lim.get('resets_at')
+                if ra:
+                    try:
+                        if datetime.fromisoformat(ra) <= datetime.now(timezone.utc):
+                            break  # rolled-over window, value not refreshed yet
+                    except ValueError:
+                        pass
+                pct = lim.get('percent')
+                break
+    except Exception:
+        pass
+    if age is None or age > CACHE_TTL:
+        _spawn_cache_refresh(now)
+    return pct
 
 raw = sys.stdin.read()
 ts = time.strftime('%Y-%m-%dT%H:%M:%S')
@@ -69,6 +137,9 @@ else:
             parts.append(f"5h:{fmt_pct((rl['five_hour'] or {}).get('used_percentage'))}")
         if 'seven_day' in rl:
             parts.append(f"7d:{fmt_pct((rl['seven_day'] or {}).get('used_percentage'))}")
+    f7d = fable_weekly_pct()
+    if f7d is not None:
+        parts.append(f"F7d:{fmt_pct(f7d)}")
     model = (parsed.get('model') or {}).get('display_name') or (parsed.get('model') or {}).get('id')
     if model:
         parts.append(str(model))

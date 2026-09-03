@@ -1,5 +1,9 @@
 {
-  "_comment": "Minimal ~/.claude/settings.json wiring for claude-code-limit-wait. Adjust the python command (python vs python3 vs full path) to taste. The 'matcher' on the PostToolUse hook is the set of tool names whose results should trigger context-monitor.py — Edit/Write/Bash covers the cases where the assistant message that just landed actually has a fresh usage block.",
+  "_comment": "Full ~/.claude/settings.json wiring for this repo. Every entry is optional: keep the block for each tool you want (see README, 'Files per tool'). Adjust the python command to taste (python / python3 / full path). On Windows, prefix each command with `PYTHONUTF8=1 PYTHONIOENCODING=utf-8 ` so hook output survives a cp932 console. CLAUDE_HOOK_USER_LANG selects the language of the terminal lines from context-monitor.py and compact-handoff-guard.py (en or ja); the text the model receives is always English. `rewakeSummary` is the one line the USER sees in the terminal for an asyncRewake hook — localize it freely; `rewakeMessage` is the prefix the MODEL sees and should stay English.",
+
+  "env": {
+    "CLAUDE_HOOK_USER_LANG": "en"
+  },
 
   "statusLine": {
     "type": "command",
@@ -7,6 +11,17 @@
   },
 
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "CronCreate|Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python ~/.claude/hooks/compact-handoff-guard.py"
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Edit|Write|Bash",
@@ -14,6 +29,31 @@
           {
             "type": "command",
             "command": "python ~/.claude/hooks/context-monitor.py"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python ~/.claude/hooks/compact-handoff-resume.py"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python ~/.claude/hooks/cache-keepalive.py",
+            "asyncRewake": true,
+            "timeout": 4000,
+            "rewakeMessage": "[cache-keepalive] ℹ️ Routine cache refresh, nothing to do: ",
+            "rewakeSummary": "ℹ️ prompt cache keep-alive (just reply ok)"
           }
         ]
       }
