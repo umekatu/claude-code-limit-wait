@@ -293,6 +293,12 @@ ping に応答すると、次のインスタンスは無言で終了する (モ�
 先に compact しておけば毎回の refresh が安く済むという1回限りの note が
 添えられる。実際のユーザープロンプトはカウントをリセットする。
 
+wake が拒否される状況では ping を出さない: その session で `limit-wait.py` が
+動いている間 (`~/.claude/.limit-wait-state.json` に新しい heartbeat がある)、
+または usage snapshot がまだ reset していない 100% のレートリミット窓を示して
+いる間。インスタンスは代わりにポーリングを続ける — どのみちそのような待機を
+またぐと cache は失われる。
+
 コスト: 1回の ping は cache された prefix を読み、わずかなトークンを生成する
 1リクエスト — Fable 5.1 では、それが防ぐ re-cache のおよそ 1/70 に相当する。
 context が大きい場合、長い idle の前に compact しておけば、ping 1回あたりの

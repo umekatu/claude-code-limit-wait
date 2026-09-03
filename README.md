@@ -285,6 +285,12 @@ no tool call and no human input, the next instance exits silently (no
 ping carries a one-time note that compacting first makes each refresh
 cheaper. A real user prompt resets the count.
 
+No ping goes out while the wake would be rejected: while `limit-wait.py` is
+running for the session (a fresh heartbeat in
+`~/.claude/.limit-wait-state.json`), or while the usage snapshot shows a
+rate-limit window at 100 % that has not reset yet. The instance keeps
+polling instead — the cache is lost across such a wait anyway.
+
 Cost: one ping is one request that reads the cached prefix and produces a
 few tokens — on Fable 5.1 roughly 1/70 of the re-cache it prevents; with a
 large context, compacting before a long idle makes each ping proportionally

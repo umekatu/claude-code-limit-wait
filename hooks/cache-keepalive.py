@@ -22,6 +22,14 @@ idle (an announced ending could set the model off doing things). The
 HINT_AT_PING-th ping of such a run carries a one-time note that compacting
 before idling makes each refresh cheaper.
 
+No ping goes out while a request from this session would be rejected: while
+limit-wait.py is running for the session (a fresh heartbeat under the
+session id in ~/.claude/.limit-wait-state.json), or while the usage
+snapshot shows a rate-limit window at 100% that has not reset yet. The
+instance keeps polling instead; the cache is lost across such a wait
+anyway, and a rejected wake would only add a failed request every idle
+period.
+
   python cache-keepalive.py [--idle-seconds 3300] [--poll 30]
   (Stop payload on stdin: session_id, transcript_path)
 
@@ -46,6 +54,34 @@ MAX_CONSECUTIVE_PINGS = 12           # ~11 h of unattended idling, then stop sil
 HINT_AT_PING = 6
 HINT = (" One-time note: if nothing in this context needs to stay loaded, compacting "
         "now and then idling makes each of these refreshes cheaper; otherwise just reply ok.")
+LIMIT_WAIT_STATE = os.path.expanduser("~/.claude/.limit-wait-state.json")
+USAGE_SNAPSHOT = os.path.expanduser("~/.claude/usage-snapshot.json")
+LIMIT_WAIT_STALE_S = 300             # limit-wait.py heartbeats every 30 s and prunes at 5 min
+
+
+def limit_blocks_ping(sid):
+    """True while a request from this session would be rejected by the rate
+    limit: limit-wait.py is running for it, or the last usage snapshot shows
+    a window at 100% whose reset time is still ahead."""
+    now = time.time()
+    try:
+        with open(LIMIT_WAIT_STATE, encoding="utf-8") as f:
+            entry = (json.load(f) or {}).get(sid) or {}
+        if now - float(entry.get("now_epoch") or 0) < LIMIT_WAIT_STALE_S:
+            return True
+    except (OSError, ValueError, TypeError, AttributeError):
+        pass
+    try:
+        with open(USAGE_SNAPSHOT, encoding="utf-8") as f:
+            limits = ((json.load(f) or {}).get("parsed") or {}).get("rate_limits") or {}
+        for lim in limits.values():
+            if (isinstance(lim, dict)
+                    and float(lim.get("used_percentage") or 0) >= 100
+                    and float(lim.get("resets_at") or 0) > now):
+                return True
+    except (OSError, ValueError, TypeError, AttributeError):
+        pass
+    return False
 
 
 def _tail_entries(path):
@@ -147,6 +183,9 @@ while True:
     except OSError:
         sys.exit(0)
     if idle >= a.idle_seconds:
+        if limit_blocks_ping(sid):
+            time.sleep(a.poll)   # the wake would be rejected; look again later
+            continue
         try:
             os.remove(lock)
         except OSError:
