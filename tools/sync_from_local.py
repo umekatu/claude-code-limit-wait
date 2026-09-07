@@ -55,6 +55,18 @@ SUBSTITUTIONS = {
          "  `postmortem` skill — do not write that rule yourself.",
          "  apology / mistake-recognition this cycle goes through your\n"
          "  mistake-handling procedure, not this step."),
+        # The private update-check in trigger_compact.py is stripped from the
+        # public copy, so the Step 5 paragraph that acts on its output (and
+        # names the private claude-restart skill) goes with it.
+        ("**If the script's output begins `UPDATE PENDING`** (exit code 3, window\n"
+         "untouched): follow the guidance it prints. By default run the\n"
+         "`claude-restart` skill with the exact command the output gives, as the\n"
+         "last tool call, and end the turn; its wake line brings you back to this\n"
+         "step, where you re-run the script on the new build. When a restart is\n"
+         "not possible right now, the output's alternative compacts this process\n"
+         "with `inject_compact.py` (the console-input route in `recovery.md`).\n"
+         "\n",
+         ""),
         ("takes; if the solo-idle-guard blocks the Stop, idle through it.",
          "takes; if a Stop hook of yours blocks the Stop, idle through it."),
         ("waiting loops, no extra tool calls, no watchdog for the ~50 s this",
