@@ -19,11 +19,13 @@ without emitting anything — preventing identical-state spam across rapid tool
 chains. The countdown text changes every minute by definition and is excluded
 from the comparison so idle minutes don't trigger emissions.
 
-Band advisories: when the leader's context % enters a ``CTX_BANDS`` band
-(75 steer-to-breakpoint / 85 compact-now), the band's
-directive text is appended once (segment ``ctxadv:<agent>`` in the same
-notified-set state). Leaving the band — e.g. % drops after a compact —
-re-arms it for the next crossing.
+Band advisories: when an agent's context % enters a band of the five-band
+ladder (``band_ladder``: comfort 30 / comfort-upper 40 / past 50 / enough 60 /
+now 75 for the leader and 70 for a subagent on a 1M window; 40 / 55 / 65 /
+75 / 85 on Haiku's 200K window), the band's directive text is appended once
+(segment ``ctxadv:<agent>`` in the same notified-set state) and the band's
+label rides on the ``Context used`` segment. Leaving the band — e.g. % drops
+after a compact — re-arms it for the next crossing.
 
 
 Window size is read from ``~/.claude/usage-snapshot.json``
@@ -35,10 +37,10 @@ When the snapshot is present, the leader's emission becomes
 only for the foreground session), so a subagent's window comes from the
 model-family rule and its tokens from its own JSONL under
 ``<leader_sid>/subagents/`` (path derived from the payload agent_id).
-Subagents get their own advisory bands (SUB_CTX_BANDS — report load to the
-leader / write the handoff; they cannot compact themselves), and the leader
-gets a watch over its ACTIVE subagents' fill (subagent_watch — a
-threshold-crossing warning per worker per band, re-armed when the worker
+Subagents get their own advisory text per band (SUB_BAND_TEXT — report load
+to the leader / write the handoff; they cannot compact themselves), and the
+leader gets a watch over its ACTIVE subagents' fill (subagent_watch — a
+band-crossing warning per worker, same ladder, re-armed when the worker
 drops below the band; nothing else surfaces a worker's remaining window to
 the leader).
 """
@@ -74,92 +76,164 @@ H5_CRITICAL = 95
 D7_CRITICAL = 99
 
 # Context-window advisory bands for the LEADER (subagents can't run
-# compact-loop and get SUB_CTX_BANDS below instead). When an agent's
+# compact-loop and get SUB_BAND_TEXT below instead). When an agent's
 # context % crosses INTO a band, the matching advisory is appended
 # once, tracked via the notified-set state (segment ``ctxadv:<agent>``).
 # Dropping out of a band (e.g. % falls after a compact) re-arms it, so each
 # work cycle gets its own nudge. Ordered highest-first; first match wins.
-CTX_BANDS = [
-    (85, "Context ≥85%: stop taking on new threads — reach a clean breakpoint"
-         " and run the compact-loop skill (Skill tool, name=compact-loop) to"
-         " re-set in-session and continue."),
-    (75, "Context ≥75%: start steering toward a clean breakpoint to re-set"
-         " at; don't start heavy chunks that could overshoot 85% mid-task."),
-    (60, "Context ≥60%: value-zone note — from here a compact at a clean"
-         " breakpoint pays back within ~2 requests (measured 2026-08-30:"
-         " post-compact fill ≈7.6% of window, re-accumulation ≈1.8K"
-         " tokens/turn). No urgency — finish the thread in hand, and ignore"
-         " this if the session is wrapping up; just don't ride past a clean"
-         " breakpoint to 75/85% out of inertia."),
-]
+# Five-band ladder (2026-09-07). Thresholds are % of the agent's context
+# window; ONE ladder serves the leader's own advisory, a subagent's own
+# advisory and the leader's watch over its subagents, so both sides of a
+# rotation see the same band. Grounded in the replay of real transcripts
+# (CCM .work/research/2026-08-30_context_economics/ceiling_sim_2026-09-07.md):
+# cost per unit of work is flat from ~25% to ~50% of a 1M window and rises
+# beyond; a fresh successor's start-up (spawn + recon, ~12% of 1M median and
+# ~18% for a heavy reader) has to be amortized, which puts the comfort-zone
+# entrance at 30% even for the heaviest readers; the CLI forces a
+# handoff-less compaction at ~87% of the 900K baseline window. "now" sits
+# lower for a subagent (its leader only has to stop it) than for the leader
+# (compact-loop needs the handoff and its procedure turns before the forced
+# point). Haiku's 200K window carries its own ladder: a successor's start-up
+# is ~21% of that window.
+BAND_LADDER_1M = {"comfort": 30, "comfort_upper": 40, "past": 50, "enough": 60}
+BAND_NOW_LEADER = 75
+BAND_NOW_SUB = 70
+BAND_LADDER_200K = {"comfort": 40, "comfort_upper": 55, "past": 65,
+                    "enough": 75, "now": 85}
+# Short label appended to the "Context used" segment while in a band.
+BAND_LABEL = {"comfort": "comfort", "comfort_upper": "comfort+",
+              "past": "past comfort", "enough": "ENOUGH", "now": "NOW"}
+BAND_LABEL_JA = {"comfort": "コンフォートゾーン",
+                 "comfort_upper": "コンフォートゾーン上限",
+                 "past": "コンフォートゾーン通過", "enough": "いい加減にしろ",
+                 "now": "今すぐ"}
 
-# JA rendering of the CTX_BANDS advisory text, keyed by the same threshold
-# (band[0]). additionalContext keeps the CTX_BANDS EN text verbatim (CLAUDE.md
-# documents those exact labels for the agent); this is systemMessage-only.
-SUB_CTX_BANDS = [
-    (85, "Context ≥85%: stop taking on new threads. Write your handoff /"
-         " durable state to disk NOW and tell your leader your load in your"
-         " next message — ask to be rotated; you cannot compact yourself."),
-    (75, "Context ≥75%: report your context load to your leader in your next"
-         " message and begin handoff prep — write durable state to disk as"
-         " you go."),
-    (60, "Context ≥60%: past the value-zone line — state your current fill in"
-         " your next report to your spawner so it can weigh a planned rotation"
-         " at a round boundary. Keep working; no urgency."),
-]
-SUB_CTX_BANDS_JA = {
-    85: "コンテキスト使用率 ≥85%: 新規着手を止め、handoff/永続状態を今すぐ"
-        "ディスクに書き、次のメッセージでリーダーに使用率を伝えて交代を"
-        "求めてください (subagent は自分では compact できません)。",
-    75: "コンテキスト使用率 ≥75%: 次のメッセージでリーダーに使用率を報告し、"
-        "handoff 準備 (永続状態のディスク書き出し) を始めてください。",
-    60: "コンテキスト使用率 ≥60%: バリューゾーンの線を越えました。次の報告で"
-        "現在の使用率を spawn 元に伝えてください (区切りでの計画交代の判断"
-        "材料になります)。作業はそのまま続けて構いません。",
+
+def band_ladder(window: int | None, is_subagent: bool) -> list[tuple[int, str]]:
+    """Highest-first (threshold %, band key) pairs for this window and role."""
+    if window and window <= 200_000:
+        table = dict(BAND_LADDER_200K)
+    else:
+        table = dict(BAND_LADDER_1M)
+        table["now"] = BAND_NOW_SUB if is_subagent else BAND_NOW_LEADER
+    return sorted(((t, k) for k, t in table.items()), reverse=True)
+
+
+def band_for(pct: float, window: int | None, is_subagent: bool):
+    """(threshold, key) of the band `pct` is in, or None below the ladder."""
+    return next(((t, k) for t, k in band_ladder(window, is_subagent) if pct >= t), None)
+
+
+# Leader's own advisory per band ({t} = the threshold crossed). EN goes to
+# additionalContext verbatim (CLAUDE.md names these bands); JA is
+# systemMessage-only.
+CTX_BAND_TEXT = {
+    "comfort": "Context ≥{t}% [comfort zone]: from here a compact at a clean"
+               " breakpoint is already the cheapest option (post-compact fill"
+               " ≈8% of the window). No urgency — finish the thread in hand;"
+               " just don't ride past a clean breakpoint out of inertia.",
+    "comfort_upper": "Context ≥{t}% [comfort zone, upper edge]: the"
+                     " cost-optimal point to compact — run the compact-loop"
+                     " skill (Skill tool, name=compact-loop) at the next clean"
+                     " breakpoint, and don't start a heavy chunk before it.",
+    "past": "Context ≥{t}% [past the comfort zone]: each turn now costs more"
+            " than a compact would; no new threads — reach the nearest clean"
+            " breakpoint and run compact-loop there.",
+    "enough": "Context ≥{t}% [ENOUGH]: stop taking on new threads and run the"
+              " compact-loop skill (Skill tool, name=compact-loop) now — a"
+              " cache miss at this size re-writes the whole context at the"
+              " write price.",
+    "now": "Context ≥{t}% [NOW]: the CLI forces a handoff-less compaction at"
+           " ~87% — run compact-loop immediately, before anything else.",
+}
+CTX_BAND_TEXT_JA = {
+    "comfort": "コンテキスト使用率 ≥{t}% [コンフォートゾーン]: ここから先は"
+               "きりの良い所で compact するのが最も安い選択です (compact 直後の"
+               "充填は窓の約 8%)。急ぎではありません — 手元の作業を先に片付けて"
+               "ください。ただし、きりの良い breakpoint を惰性で素通りしないで"
+               "ください。",
+    "comfort_upper": "コンテキスト使用率 ≥{t}% [コンフォートゾーン上限]: 費用面で"
+                     "最適な compact 地点です。次のきりの良い breakpoint で"
+                     " compact-loop skill (Skill tool, name=compact-loop) を実行し、"
+                     "その前に重い作業へ着手しないでください。",
+    "past": "コンテキスト使用率 ≥{t}% [コンフォートゾーン通過]: 毎 turn の費用が"
+            " compact の費用を上回り始めています。新規着手を止め、最寄りの"
+            " breakpoint で compact-loop を実行してください。",
+    "enough": "コンテキスト使用率 ≥{t}% [いい加減にしろ]: 新しい thread の着手を"
+              "止め、今すぐ compact-loop skill (Skill tool, name=compact-loop) を"
+              "実行してください。この大きさで cache miss が起きると context 全体が"
+              "書込料金で再課金されます。",
+    "now": "コンテキスト使用率 ≥{t}% [今すぐ]: CLI は約 87% で handoff なしの"
+           "強制 compact を行います。他の何よりも先に compact-loop を実行して"
+           "ください。",
+}
+
+# A subagent's own advisory per band (it cannot compact itself; its leader
+# rotates it from a handoff).
+SUB_BAND_TEXT = {
+    "comfort": "Context ≥{t}% [comfort zone]: if substantial work remains, a"
+               " handoff at a round boundary is now cheaper than running on."
+               " Keep working; state your fill in your next report to your"
+               " spawner.",
+    "comfort_upper": "Context ≥{t}% [comfort zone, upper edge]: cost-optimal"
+                     " handoff point — finish the unit in hand, write durable"
+                     " state to disk, and report your fill with an offer to"
+                     " hand off at the next round boundary.",
+    "past": "Context ≥{t}% [past the comfort zone]: write your handoff /"
+            " durable state to disk now and tell your leader your load —"
+            " hand off at this boundary.",
+    "enough": "Context ≥{t}% [ENOUGH]: take no new sub-tasks. Report your load"
+              " and end your run with the handoff written; you cannot compact"
+              " yourself.",
+    "now": "Context ≥{t}% [NOW]: stop and report immediately — the leader"
+           " rotates you; you cannot compact yourself.",
+}
+SUB_BAND_TEXT_JA = {
+    "comfort": "コンテキスト使用率 ≥{t}% [コンフォートゾーン]: 残作業が多いなら、"
+               "区切りで handoff して後継に渡す方が走り続けるより安くなりました。"
+               "作業は続け、次の報告で現在の使用率を spawn 元に伝えてください。",
+    "comfort_upper": "コンテキスト使用率 ≥{t}% [コンフォートゾーン上限]: 費用面で"
+                     "最適な交代地点です。手元の単位を終えて永続状態をディスクに"
+                     "書き、次の区切りで交代できると添えて使用率を報告してください。",
+    "past": "コンテキスト使用率 ≥{t}% [コンフォートゾーン通過]: handoff/永続状態を"
+            "今ディスクに書き、リーダーに使用率を伝えて、この区切りで交代して"
+            "ください。",
+    "enough": "コンテキスト使用率 ≥{t}% [いい加減にしろ]: 新しい sub-task を"
+              "受けないでください。使用率を報告し、handoff を書いて run を終えて"
+              "ください (subagent は自分では compact できません)。",
+    "now": "コンテキスト使用率 ≥{t}% [今すぐ]: 直ちに止まって報告してください。"
+           "交代はリーダーが行います (subagent は自分では compact できません)。",
 }
 
 # Leader-side watch over ACTIVE subagents' context fill (transcript mtime
 # within SUBWATCH_ACTIVE_S). Nothing else surfaces a worker's remaining
 # window to the leader: completion notifications carry cumulative spend,
-# and a worker's own ≥75% report is model-compliance. Warned once per
+# and a worker's own band report is model-compliance. Warned once per
 # (worker, band) via the notified-set state (segment ``subctx:<file>``);
-# dropping below the band re-arms it.
+# dropping below the band re-arms it. Same ladder as the worker's own
+# advisory (band_ladder with is_subagent=True).
 SUBWATCH_ACTIVE_S = 900
 SUBWATCH_TAIL_BYTES = 131072
-SUBWATCH_BANDS = [
-    (95, "compaction-imminent — direct it to STOP and hand off immediately"),
-    (85, "direct it to write its handoff and rotate now"),
-    (75, "expect its load report; plan its handoff/rotation at the next"
-         " round boundary"),
-    (60, "consider a planned rotation at a round boundary: every request"
-         " re-bills the whole fill at the cache-read rate, so a successor"
-         " built from a handoff typically pays for itself within ~a dozen"
-         " requests — weigh that against the implicit context a handoff"
-         " cannot carry"),
-]
-SUBWATCH_BANDS_JA = {
-    95: "compaction 目前 — 即時停止と handoff を指示してください",
-    85: "handoff を書かせて交代させてください",
-    75: "負荷報告が来るはずです。次の区切りで handoff/交代を計画してください",
-    60: "区切りでの計画交代を検討してください (毎リクエスト充填全量に"
-        " cache-read 料金がかかるため、handoff からの後継は十数リクエスト"
-        "程度で元が取れます。handoff に書けない暗黙知の価値と天秤に)",
+SUBWATCH_TEXT = {
+    "comfort": "[comfort zone] if it has substantial work left, plan its"
+               " handoff at a round boundary — a successor built from a"
+               " handoff is cheaper than running on from here",
+    "comfort_upper": "[comfort zone, upper edge] cost-optimal rotation point"
+                     " — plan its handoff at the next round boundary",
+    "past": "[past the comfort zone] expect its load report; rotate it at"
+            " this boundary",
+    "enough": "[ENOUGH] direct it to write its handoff and rotate now",
+    "now": "[NOW] direct it to STOP and hand off immediately",
 }
-
-CTX_BANDS_JA = {
-    85: "コンテキスト使用率 ≥85%: 新しい thread の着手を止め、きりの良い"
-        " breakpoint まで進めてから compact-loop skill (Skill tool,"
-        " name=compact-loop) を実行してセッション内で re-set し、続行して"
-        "ください。",
-    75: "コンテキスト使用率 ≥75%: きりの良い breakpoint に向けて舵を切り"
-        "始めてください。途中で 85% を超えかねない重い作業には着手しない"
-        "でください。",
-    60: "コンテキスト使用率 ≥60%: バリューゾーンに入りました。ここから先は"
-        "きりの良い所で compact すれば約 2 リクエストで元が取れます (実測:"
-        " compact 直後は窓の約 7.6%、再蓄積は毎 turn 約 1.8K token と緩やか)。"
-        "急ぎではありません — 手元の作業を先に片付け、セッションを畳む直前"
-        "なら無視して構いません。ただし、きりの良い breakpoint を惰性で"
-        "素通りして 75/85% まで乗り続けるのは避けてください。",
+SUBWATCH_TEXT_JA = {
+    "comfort": "[コンフォートゾーン] 残作業が多いなら区切りでの handoff を"
+               "計画してください (ここからは handoff からの後継の方が安い)",
+    "comfort_upper": "[コンフォートゾーン上限] 費用面で最適な交代地点です。"
+                     "次の区切りで handoff を計画してください",
+    "past": "[コンフォートゾーン通過] 負荷報告が来るはずです。この区切りで"
+            "交代させてください",
+    "enough": "[いい加減にしろ] handoff を書かせて今交代させてください",
+    "now": "[今すぐ] 即時停止と handoff を指示してください",
 }
 
 
@@ -313,16 +387,16 @@ def subagent_watch(leader_path: str, consider, now: float):
             continue
         window = window_for_subagent(model)
         pct = tokens / window * 100
-        band = next(((t, txt) for t, txt in SUBWATCH_BANDS if pct >= t), None)
+        band = band_for(pct, window, True)
         if not consider(f"subctx:{fn}", band[0] if band else 0) or not band:
             continue
         name = worker_display_name(fn)
         en.append(f"⚠ Subagent '{name}' context ~{pct:.0f}% "
                   f"(~{tokens // 1000}K/{fmt_window(window)}) crossed "
-                  f"{band[0]}% — {band[1]}.")
+                  f"{band[0]}% — {SUBWATCH_TEXT[band[1]]}.")
         ja.append(f"⚠ subagent '{name}' のコンテキストが約{pct:.0f}% "
                   f"(約{tokens // 1000}K/{fmt_window(window)}) で {band[0]}% を"
-                  f"超えました — {SUBWATCH_BANDS_JA.get(band[0], '')}。")
+                  f"超えました — {SUBWATCH_TEXT_JA[band[1]]}。")
     return en, ja
 
 
@@ -526,14 +600,19 @@ def main() -> None:
     # still updates state so re-entering a band re-emits its advisory.
     band_text = None
     band_text_ja = None
+    band_label = ""
+    band_label_ja = ""
     pct_now = tokens / window * 100 if window else None
     if pct_now is not None:
-        bands = SUB_CTX_BANDS if is_subagent else CTX_BANDS
-        bands_ja = SUB_CTX_BANDS_JA if is_subagent else CTX_BANDS_JA
-        band = next(((t, txt) for t, txt in bands if pct_now >= t), None)
+        band = band_for(pct_now, window, is_subagent)
+        if band:
+            band_label = f" [{BAND_LABEL[band[1]]}]"
+            band_label_ja = f" [{BAND_LABEL_JA[band[1]]}]"
         if consider(f"ctxadv:{agent_key}", band[0] if band else 0) and band:
-            band_text = band[1]
-            band_text_ja = bands_ja.get(band[0])
+            texts = SUB_BAND_TEXT if is_subagent else CTX_BAND_TEXT
+            texts_ja = SUB_BAND_TEXT_JA if is_subagent else CTX_BAND_TEXT_JA
+            band_text = texts[band[1]].format(t=band[0])
+            band_text_ja = texts_ja[band[1]].format(t=band[0])
 
     # Leader-side watch over active subagents' context fill.
     watch_en: list[str] = []
@@ -566,8 +645,8 @@ def main() -> None:
     if emit_ctx:
         if window:
             pct = tokens / window * 100
-            segments.append(f"Context used: {pct:.0f}%")
-            segments_ja.append(f"コンテキスト使用率: {pct:.0f}%")
+            segments.append(f"Context used: {pct:.0f}%{band_label}")
+            segments_ja.append(f"コンテキスト使用率: {pct:.0f}%{band_label_ja}")
         else:
             segments.append(f"Context used: {tokens:,} tokens")
             segments_ja.append(f"コンテキスト使用量: {tokens:,} トークン")

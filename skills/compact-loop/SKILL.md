@@ -27,9 +27,10 @@ task list, `git log`, CLAUDE.md, memory, or the codebase. Nothing
 concrete → do NOT fire regardless of triggers; use `TaskCreate` /
 commits / memory for the preservation need instead.
 
-- **Context pressure** — context ≥ 75% or a context-monitor advisory
-  surfaced. Trigger, not gate — <75% is not a precondition; the other
-  triggers still fire at any context level.
+- **Context pressure** — the context hook's band label reads
+  `comfort+` (≥40% of the window) or a higher band (`past comfort`,
+  `ENOUGH`, `NOW`). This is one trigger among three; each of the
+  others fires at any context level.
 - **Cognitive dead-end** — same hypotheses recurring, new angles not
   surfacing.
 - **Phase break** — clean topic shift; current history would anchor
