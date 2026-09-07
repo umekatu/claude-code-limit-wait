@@ -50,12 +50,13 @@ hooks/
                                  ℹ️ Context used: NN% | Limits used: 5h XX% in … (rsts …), 7d XX% in …
                                5h ≥95% または 7d ≥99% のとき、limit-wait
                                Skill を今すぐ呼べという ⚠️ アドバイザリを
-                               末尾に追記する。context window の 60 / 75 /
-                               85 % 到達時には帯域アドバイザリを1回だけ
-                               追記する (value zone / 区切りへ向けて舵を
-                               切る / compact-loop を今すぐ走らせる)。team
-                               leader の場合は subagent が 60/75/85/95 % を
-                               跨いだことも報告する。user 向けの行は、
+                               末尾に追記する。context 行には帯ラベルが付き、
+                               帯に入った時に 1 回だけアドバイザリを追記する
+                               (1M 窓で comfort 30 / comfort+ 40 / past
+                               comfort 50 / ENOUGH 60 / NOW 75 %。subagent
+                               の NOW は 70、200K 窓は 40/55/65/75/85)。team
+                               leader の場合は subagent が帯に入ったことも
+                               報告する。user 向けの行は、
                                CLAUDE_HOOK_USER_LANG=ja が設定されていない
                                限り英語 (Install 参照)。model 向けの
                                テキストは常に英語。
@@ -120,7 +121,7 @@ examples/settings.json.example 配線全部を1ファイルに。
 | Tool | Hooks | Skill / scripts | settings.json blocks |
 | --- | --- | --- | --- |
 | limit-wait | `usage-probe-statusline.py`, `oauth-usage-probe.py`, `context-monitor.py`, `limit-wait.py`, `compact-handoff-guard.py` | `skills/limit-wait/SKILL.md` | `statusLine`, `PostToolUse`, `PreToolUse` |
-| compact-loop | `usage-probe-statusline.py`, `context-monitor.py` (≥75 % アドバイザリ), `compact-handoff-guard.py`, `compact-handoff-resume.py` | `skills/compact-loop/*`, `scripts/compact-handoff/dump.py` | `statusLine`, `PostToolUse`, `PreToolUse`, `UserPromptSubmit` |
+| compact-loop | `usage-probe-statusline.py`, `context-monitor.py` (帯アドバイザリ), `compact-handoff-guard.py`, `compact-handoff-resume.py` | `skills/compact-loop/*`, `scripts/compact-handoff/dump.py` | `statusLine`, `PostToolUse`, `PreToolUse`, `UserPromptSubmit` |
 | cache-keepalive | `cache-keepalive.py` | `tools/install_cache_keepalive.py` (任意) | `Stop` |
 
 `usage-probe-statusline.py` は共有: その snapshot が、他のスクリプトが読む
@@ -212,7 +213,7 @@ Auto-compact は発火が遅く、盲目的。この Skill は、後継者向け
 ### 連動の流れ
 
 ```
- context ≥75% (context-monitor アドバイザリ) または dead end または phase break
+ context の帯が comfort+ 以上 (context-monitor) または dead end または phase break
                           │
                           ▼
               Skill(name="compact-loop")
@@ -366,7 +367,7 @@ context が大きい場合、長い idle の前に compact しておけば、pin
    表示され、モデルが `ok` と答える。その後 `--test` なしで再実行する。
 
 6. **compact-loop** は上記2つの hook 以外に何も要らない。Skill は、
-   context-monitor の ≥75 % アドバイザリが出た時、dead end に達した時、
+   context-monitor が comfort+ 以上の帯を報告した時、dead end に達した時、
    または phase break の時にモデル自身が呼び出す。handoff は
    `<project>/.work/compact-handoff/` に置かれる — project が repo なら、
    そのディレクトリを `.gitignore` に加えること。

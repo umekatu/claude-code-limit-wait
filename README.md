@@ -50,11 +50,13 @@ hooks/
                                  ℹ️ Context used: NN% | Limits used: 5h XX% in … (rsts …), 7d XX% in …
                                At 5h ≥95% or 7d ≥99% it appends a ⚠️
                                advisory that tells the model to invoke the
-                               limit-wait Skill NOW. At 60 / 75 / 85 % of the
-                               context window it appends a one-time band
-                               advisory (value zone / steer to a breakpoint /
-                               run compact-loop now). For a team leader it
-                               also reports a subagent crossing 60/75/85/95 %.
+                               limit-wait Skill NOW. The context line carries a
+                               band label, and entering a band appends a
+                               one-time advisory: comfort 30 / comfort+ 40 /
+                               past comfort 50 / ENOUGH 60 / NOW 75 % of a 1M
+                               window (a subagent's NOW is 70; a 200K window
+                               uses 40/55/65/75/85). For a team leader it also
+                               reports a subagent entering a band.
                                The user-facing line is English unless
                                CLAUDE_HOOK_USER_LANG=ja is set (see Install);
                                the model-facing text is always English.
@@ -115,7 +117,7 @@ examples/settings.json.example All the wiring in one file.
 | Tool | Hooks | Skill / scripts | settings.json blocks |
 | --- | --- | --- | --- |
 | limit-wait | `usage-probe-statusline.py`, `oauth-usage-probe.py`, `context-monitor.py`, `limit-wait.py`, `compact-handoff-guard.py` | `skills/limit-wait/SKILL.md` | `statusLine`, `PostToolUse`, `PreToolUse` |
-| compact-loop | `usage-probe-statusline.py`, `context-monitor.py` (the ≥75 % advisory), `compact-handoff-guard.py`, `compact-handoff-resume.py` | `skills/compact-loop/*`, `scripts/compact-handoff/dump.py` | `statusLine`, `PostToolUse`, `PreToolUse`, `UserPromptSubmit` |
+| compact-loop | `usage-probe-statusline.py`, `context-monitor.py` (the band advisories), `compact-handoff-guard.py`, `compact-handoff-resume.py` | `skills/compact-loop/*`, `scripts/compact-handoff/dump.py` | `statusLine`, `PostToolUse`, `PreToolUse`, `UserPromptSubmit` |
 | cache-keepalive | `cache-keepalive.py` | `tools/install_cache_keepalive.py` (optional) | `Stop` |
 
 `usage-probe-statusline.py` is shared: its snapshot carries the session id,
@@ -207,7 +209,7 @@ the user to type `/compact`.
 ### How it fits together
 
 ```
- context ≥75% (context-monitor advisory)  or  dead end  or  phase break
+ context band comfort+ or above (context-monitor)  or  dead end  or  phase break
                           │
                           ▼
               Skill(name="compact-loop")
@@ -358,7 +360,8 @@ cheaper.
    and the model answers `ok`. Then re-run without `--test`.
 
 6. **compact-loop** needs nothing beyond the two hooks. The Skill is
-   invoked by the model when context-monitor's ≥75 % advisory appears, at a
+   invoked by the model when context-monitor reports the comfort+ band or
+   above, at a
    dead end, or at a phase break. The handoff lands in
    `<project>/.work/compact-handoff/` — add that directory to your
    `.gitignore` if the project is a repo.
