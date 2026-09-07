@@ -110,9 +110,9 @@ def log_line(cwd: str, msg: str) -> None:
         pass
 
 
-# The console-input route is the recovery step after a window-shrink that did
-# not fire, never the first move: /compact is refused unless trigger_compact.py
-# was attempted in this project within this window (its log line is the proof).
+# /compact is accepted only within this window after a trigger_compact.py
+# attempt in this project (its log line is the proof); the compact-loop skill
+# owns the order of steps, so the refusal points back to it.
 TRIGGER_WINDOW_SECONDS = 600
 TRIGGER_ATTEMPT_RX = re.compile(
     r"^(\S+) (?:set CLAUDE_CODE_AUTO_COMPACT_WINDOW=|update pending )")
@@ -236,12 +236,10 @@ def main() -> int:
         if (age is None or age > TRIGGER_WINDOW_SECONDS) and not args.force:
             when = "never" if age is None else f"{int(age // 60)} min ago"
             print(f"REFUSED: trigger_compact.py was last attempted in this project "
-                  f"{when}. This route is the recovery step of the compact-loop "
-                  f"skill, not a first move. Re-read the skill (Skill tool, "
-                  f"name=compact-loop) and follow its steps in their order; the "
-                  f"console-input route comes only after Step 5's trigger did not "
-                  f"fire, and is accepted within {TRIGGER_WINDOW_SECONDS // 60} min "
-                  f"of that attempt. --force \"<reason>\" overrides.")
+                  f"{when}; this route accepts /compact only within "
+                  f"{TRIGGER_WINDOW_SECONDS // 60} min of such an attempt. Re-read "
+                  f"the compact-loop skill (Skill tool, name=compact-loop) and "
+                  f"follow its steps in their order. --force \"<reason>\" overrides.")
             log_line(cwd, f"inject_compact: REFUSED — no trigger_compact attempt within "
                           f"{TRIGGER_WINDOW_SECONDS}s (last: {when})")
             return 2
