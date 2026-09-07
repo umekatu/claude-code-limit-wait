@@ -17,7 +17,7 @@ the payload's raw `cwd` only if the transcript is unreadable.
     (agent needs the value back to write the resume pointer).
     `--print-path-only` → inject the resolved home cwd (not the raw
     payload cwd) as additionalContext.
-(C) watchdog-timer.py / limit-wait.py missing or wrong --session-id →
+(C) limit-wait.py missing or wrong --session-id →
     REWRITE via hookSpecificOutput.updatedInput.command (transparent
     inject; agent never sees the value because it doesn't need to).
 (D) compact-loop/trigger_compact.py → BLOCK for subagents (shared
@@ -190,14 +190,14 @@ def main() -> None:
             )
             return
         # Match only ACTUAL invocations: `python [single-letter flag]
-        # <path>watchdog-timer.py` (similar for limit-wait.py). String
+        # <path>limit-wait.py`. String
         # mentions inside `python -c "..."` / heredocs / `cat`/`echo` args
         # must not trigger — otherwise the hook corrupts the agent's own
         # diagnostics.
         invocation_re = (
             r"\bpython\b(?:\s+-[A-Za-z]\S*)?\s+['\"]?"
             r"(?:\$HOME|~|[A-Za-z]:|/)[^'\"\s|;&]*?[/\\]"
-            r"(watchdog-timer|limit-wait|timer-wait)\.py"
+            r"(limit-wait)\.py"
         )
         m = re.search(invocation_re, cmd)
         if m:

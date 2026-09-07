@@ -104,6 +104,16 @@ SUBSTITUTIONS = {
         (" For a wait with a specific known target time unrelated to rate limits, use `wake-at` instead.", ""),
         ("\nSibling waiters: `wake-at` (known ETA), `watchdog-timer` (unknown ETA).\n", ""),
     ],
+    "hooks/compact-handoff-guard.py": [
+        # Of the three --session-id targets only limit-wait.py is published;
+        # the public guard names it alone (the other two are private waiters).
+        ("(C) watchdog-timer.py / limit-wait.py missing or wrong --session-id →",
+         "(C) limit-wait.py missing or wrong --session-id →"),
+        ("        # <path>watchdog-timer.py` (similar for limit-wait.py). String",
+         "        # <path>limit-wait.py`. String"),
+        (r'            r"(watchdog-timer|limit-wait|timer-wait)\.py"',
+         r'            r"(limit-wait)\.py"'),
+    ],
 }
 
 # The compact-loop skill ends with a paragraph of memory pointers; everything
