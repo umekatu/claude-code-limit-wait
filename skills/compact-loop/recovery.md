@@ -58,6 +58,14 @@ No argument submits `/compact`; `--clear` submits `/clear`. Those two
 strings are the only things it can send. `--dry-run` reports the
 console membership and the command, submitting nothing.
 
+`/compact` is refused (exit 2) unless `trigger_compact.py` was attempted
+in this project within the last 10 minutes — its `set …` or `update
+pending` line in `.claude/trigger_compact.log` is the proof. The refusal
+says to re-read the compact-loop skill and follow its steps in their
+order; this route is Step 5's recovery step, reached only after the
+trigger did not fire. `--force "<reason>"` overrides and logs the
+reason; `--clear` is not gated (it has no trigger step).
+
 Full dead-watcher path live-verified 2026-08-04: probe mismatch on two
 reads → this script launched via the PowerShell tool in background as
 the turn's last call → `/compact` fired on the idle prompt, session_id

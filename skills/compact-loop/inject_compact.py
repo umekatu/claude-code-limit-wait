@@ -110,6 +110,33 @@ def log_line(cwd: str, msg: str) -> None:
         pass
 
 
+# The console-input route is the recovery step after a window-shrink that did
+# not fire, never the first move: /compact is refused unless trigger_compact.py
+# was attempted in this project within this window (its log line is the proof).
+TRIGGER_WINDOW_SECONDS = 600
+TRIGGER_ATTEMPT_RX = re.compile(
+    r"^(\S+) (?:set CLAUDE_CODE_AUTO_COMPACT_WINDOW=|update pending )")
+
+
+def last_trigger_attempt(cwd: str):
+    """Seconds since trigger_compact.py last shrank the window or reported a
+    pending update in this project (its lines in .claude/trigger_compact.log);
+    None when the log has no such line."""
+    log = Path(cwd) / ".claude" / "trigger_compact.log"
+    try:
+        lines = log.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return None
+    for line in reversed(lines):
+        m = TRIGGER_ATTEMPT_RX.match(line)
+        if m:
+            try:
+                return (datetime.now() - datetime.fromisoformat(m.group(1))).total_seconds()
+            except ValueError:
+                return None
+    return None
+
+
 def _image_path(k32, pid: int) -> str:
     handle = k32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
     if not handle:
@@ -194,10 +221,32 @@ def main() -> int:
     p.add_argument("--cwd", default=None,
                    help="project root whose .claude/trigger_compact.log"
                         " receives the log line (default: current dir)")
+    p.add_argument("--force", metavar="REASON",
+                   help="submit /compact although trigger_compact.py was not"
+                        f" attempted here in the last {TRIGGER_WINDOW_SECONDS // 60}"
+                        " min; the reason is written to the log")
     args = p.parse_args()
 
     cwd = args.cwd or os.getcwd()
     command = CLEAR_COMMAND if args.clear else COMPACT_COMMAND
+
+    # /compact only: /clear has no trigger step (clear-mode.md).
+    if not args.clear:
+        age = last_trigger_attempt(cwd)
+        if (age is None or age > TRIGGER_WINDOW_SECONDS) and not args.force:
+            when = "never" if age is None else f"{int(age // 60)} min ago"
+            print(f"REFUSED: trigger_compact.py was last attempted in this project "
+                  f"{when}. This route is the recovery step of the compact-loop "
+                  f"skill, not a first move. Re-read the skill (Skill tool, "
+                  f"name=compact-loop) and follow its steps in their order; the "
+                  f"console-input route comes only after Step 5's trigger did not "
+                  f"fire, and is accepted within {TRIGGER_WINDOW_SECONDS // 60} min "
+                  f"of that attempt. --force \"<reason>\" overrides.")
+            log_line(cwd, f"inject_compact: REFUSED — no trigger_compact attempt within "
+                          f"{TRIGGER_WINDOW_SECONDS}s (last: {when})")
+            return 2
+        if args.force:
+            log_line(cwd, f"inject_compact: --force {args.force!r}")
 
     if os.name != "nt":
         print("REFUSED: console injection is implemented for Windows only.")

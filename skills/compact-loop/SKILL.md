@@ -235,7 +235,10 @@ script either way.
 
 **If you wake to the script's notification and NO compact summary is
 above** (still the pre-compact instance): read `recovery.md` and
-follow its diagnosis order.
+follow its diagnosis order. The console-input route (`inject_compact.py`)
+is that recovery step: it refuses `/compact` unless `trigger_compact.py`
+was attempted in this project within the last 10 minutes, and its
+refusal says to re-read this skill and follow the steps in their order.
 
 **`/clear` mode:** read `clear-mode.md` and follow its Step 5
 (wake-cron then `/clear` submission; console-input mechanics in
