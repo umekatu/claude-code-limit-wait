@@ -25,9 +25,15 @@ Diagnose in order — do not jump to re-running:
      a later breakpoint instead.
    - **Empty / different value** → re-read once on your NEXT inference
      step (a too-early read can race the update). If it still doesn't
-     match, **this session can no longer be reset by the window
-     shrink** — re-running the script is pure waste. Instead, in order:
-     1. Submit `/compact` via the console-input reset below.
+     match, the shrink did not reach the live process before the 120 s
+     restore undid it — a lagging or a dead settings watcher, and the
+     two reads cannot tell which — so **the window shrink is not a
+     route to this reset**; re-running the script is a bet, not a step.
+     Instead, in order:
+     1. Submit `/compact` via the console-input reset below. The
+        trigger attempt you just diagnosed is the proof its gate needs;
+        when more than 10 minutes have passed since it, add
+        `--force "<reason>"`.
      2. If that script reports itself unavailable, or the user is
         active at the keyboard, send a PushNotification asking them in
         plain language to type `/compact` when convenient. A user-typed
@@ -80,8 +86,22 @@ exactly one CLI on its console and names the target pid in its output;
 zero or several means it refuses. When unsure of a launcher, `--dry-run`
 from it first.
 
-Launch in the background as the LAST tool call of the turn, with
-everything owed to the user said in the same message, then end the
+**Arm a wake first.** An injected `/compact` ends without a model
+turn: the post-compact instance starts only at the next wake — a user
+prompt, a scheduled alarm, or the cache-keepalive ping (55 min). Before
+launching this script, start an alarm whose completion lands after the
+compaction (a ~700k-token compaction took about 3 minutes) — Bash tool,
+`run_in_background: true`:
+
+```
+sleep 360; echo "compact-loop: post-compact wake"
+```
+
+Completion notifications survive a compact, so that notification is the
+post-compact instance's first turn: it reads the handoff and continues.
+
+Launch this script in the background as the LAST tool call of the turn,
+with everything owed to the user said in the same message, then end the
 turn — the default `--pre-sleep 10` waits for the turn to finish so the
 command is submitted against an idle prompt.
 

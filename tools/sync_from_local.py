@@ -93,6 +93,12 @@ SUBSTITUTIONS = {
          "        `watchdog-timer` only when no work remains.",
          "later breakpoint, until the compact lands. Idle only when no\n"
          "        work remains."),
+        # The wake alarm before an injected /compact: the author's install
+        # uses the wake-at skill's timer script, which is not in this repo;
+        # a plain background sleep gives the same completion notification.
+        ("exec python \"$HOME/.claude/hooks/timer-wait.py\" --seconds 360 "
+         "--label \"compact-loop post-compact wake\"",
+         "sleep 360; echo \"compact-loop: post-compact wake\""),
     ],
     "skills/compact-loop/clear-mode.md": [
         ("3. Idle. The solo-idle-guard will block the first Stop; idle through\n"
