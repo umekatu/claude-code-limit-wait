@@ -52,9 +52,12 @@ hooks/
                                Skill を今すぐ呼べという ⚠️ アドバイザリを
                                末尾に追記する。context 行には帯ラベルが付き、
                                帯に入った時に 1 回だけアドバイザリを追記する
-                               (1M 窓で comfort 30 / comfort+ 40 / past
-                               comfort 50 / ENOUGH 60 / NOW 75 %。subagent
-                               の NOW は 70、200K 窓は 40/55/65/75/85)。team
+                               (1M 窓で compact-ready 30 / compact-optimal
+                               40 / compact-due 50 / compact-overdue 60 /
+                               critical 75 %。subagent の critical は 70、
+                               200K 窓は 40/55/65/75/85。日本語表示では
+                               圧縮可 / 圧縮適期 / 圧縮期限 / 期限超過 /
+                               緊急)。team
                                leader の場合は subagent が帯に入ったことも
                                報告する。user 向けの行は、
                                CLAUDE_HOOK_USER_LANG=ja が設定されていない
@@ -213,7 +216,7 @@ Auto-compact は発火が遅く、盲目的。この Skill は、後継者向け
 ### 連動の流れ
 
 ```
- context の帯が comfort+ 以上 (context-monitor) または dead end または phase break
+ context の帯が compact-optimal 以上 (context-monitor) または dead end または phase break
                           │
                           ▼
               Skill(name="compact-loop")
@@ -367,7 +370,7 @@ context が大きい場合、長い idle の前に compact しておけば、pin
    表示され、モデルが `ok` と答える。その後 `--test` なしで再実行する。
 
 6. **compact-loop** は上記2つの hook 以外に何も要らない。Skill は、
-   context-monitor が comfort+ 以上の帯を報告した時、dead end に達した時、
+   context-monitor が compact-optimal 以上の帯を報告した時、dead end に達した時、
    または phase break の時にモデル自身が呼び出す。handoff は
    `<project>/.work/compact-handoff/` に置かれる — project が repo なら、
    そのディレクトリを `.gitignore` に加えること。

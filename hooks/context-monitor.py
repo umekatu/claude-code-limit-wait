@@ -20,9 +20,10 @@ chains. The countdown text changes every minute by definition and is excluded
 from the comparison so idle minutes don't trigger emissions.
 
 Band advisories: when an agent's context % enters a band of the five-band
-ladder (``band_ladder``: comfort 30 / comfort-upper 40 / past 50 / enough 60 /
-now 75 for the leader and 70 for a subagent on a 1M window; 40 / 55 / 65 /
-75 / 85 on Haiku's 200K window), the band's directive text is appended once
+ladder (``band_ladder``: compact-ready 30 / compact-optimal 40 / compact-due
+50 / compact-overdue 60 / critical 75 for the leader and 70 for a subagent on
+a 1M window; 40 / 55 / 65 / 75 / 85 on Haiku's 200K window), the band's
+directive text is appended once
 (segment ``ctxadv:<agent>`` in the same notified-set state) and the band's
 label rides on the ``Context used`` segment. Leaving the band — e.g. % drops
 after a compact — re-arms it for the next crossing.
@@ -88,25 +89,25 @@ D7_CRITICAL = 99
 # (CCM .work/research/2026-08-30_context_economics/ceiling_sim_2026-09-07.md):
 # cost per unit of work is flat from ~25% to ~50% of a 1M window and rises
 # beyond; a fresh successor's start-up (spawn + recon, ~12% of 1M median and
-# ~18% for a heavy reader) has to be amortized, which puts the comfort-zone
-# entrance at 30% even for the heaviest readers; the CLI forces a
-# handoff-less compaction at ~87% of the 900K baseline window. "now" sits
+# ~18% for a heavy reader) has to be amortized, which puts the `ready`
+# band's entrance at 30% even for the heaviest readers; the CLI forces a
+# handoff-less compaction at ~87% of the 900K baseline window. "critical" sits
 # lower for a subagent (its leader only has to stop it) than for the leader
 # (compact-loop needs the handoff and its procedure turns before the forced
 # point). Haiku's 200K window carries its own ladder: a successor's start-up
 # is ~21% of that window.
-BAND_LADDER_1M = {"comfort": 30, "comfort_upper": 40, "past": 50, "enough": 60}
-BAND_NOW_LEADER = 75
-BAND_NOW_SUB = 70
-BAND_LADDER_200K = {"comfort": 40, "comfort_upper": 55, "past": 65,
-                    "enough": 75, "now": 85}
+BAND_LADDER_1M = {"ready": 30, "optimal": 40, "due": 50, "overdue": 60}
+BAND_CRITICAL_LEADER = 75
+BAND_CRITICAL_SUB = 70
+BAND_LADDER_200K = {"ready": 40, "optimal": 55, "due": 65,
+                    "overdue": 75, "critical": 85}
 # Short label appended to the "Context used" segment while in a band.
-BAND_LABEL = {"comfort": "comfort", "comfort_upper": "comfort+",
-              "past": "past comfort", "enough": "ENOUGH", "now": "NOW"}
-BAND_LABEL_JA = {"comfort": "コンフォートゾーン",
-                 "comfort_upper": "コンフォートゾーン上限",
-                 "past": "コンフォートゾーン通過", "enough": "いい加減にしろ",
-                 "now": "今すぐ"}
+BAND_LABEL = {"ready": "compact-ready", "optimal": "compact-optimal",
+              "due": "compact-due", "overdue": "compact-overdue", "critical": "critical"}
+BAND_LABEL_JA = {"ready": "圧縮可",
+                 "optimal": "圧縮適期",
+                 "due": "圧縮期限", "overdue": "期限超過",
+                 "critical": "緊急"}
 
 
 def band_ladder(window: int | None, is_subagent: bool) -> list[tuple[int, str]]:
@@ -115,7 +116,7 @@ def band_ladder(window: int | None, is_subagent: bool) -> list[tuple[int, str]]:
         table = dict(BAND_LADDER_200K)
     else:
         table = dict(BAND_LADDER_1M)
-        table["now"] = BAND_NOW_SUB if is_subagent else BAND_NOW_LEADER
+        table["critical"] = BAND_CRITICAL_SUB if is_subagent else BAND_CRITICAL_LEADER
     return sorted(((t, k) for k, t in table.items()), reverse=True)
 
 
@@ -128,42 +129,42 @@ def band_for(pct: float, window: int | None, is_subagent: bool):
 # additionalContext verbatim (CLAUDE.md names these bands); JA is
 # systemMessage-only.
 CTX_BAND_TEXT = {
-    "comfort": "Context ≥{t}% [comfort zone]: from here a compact at a clean"
+    "ready": "Context ≥{t}% [compact-ready]: from here a compact at a clean"
                " breakpoint is already the cheapest option (post-compact fill"
                " ≈8% of the window). No urgency — finish the thread in hand;"
                " just don't ride past a clean breakpoint out of inertia.",
-    "comfort_upper": "Context ≥{t}% [comfort zone, upper edge]: the"
+    "optimal": "Context ≥{t}% [compact-optimal]: the"
                      " cost-optimal point to compact — run the compact-loop"
                      " skill (Skill tool, name=compact-loop) at the next clean"
                      " breakpoint, and don't start a heavy chunk before it.",
-    "past": "Context ≥{t}% [past the comfort zone]: each turn now costs more"
+    "due": "Context ≥{t}% [compact-due]: each turn now costs more"
             " than a compact would; no new threads — reach the nearest clean"
             " breakpoint and run compact-loop there.",
-    "enough": "Context ≥{t}% [ENOUGH]: stop taking on new threads and run the"
+    "overdue": "Context ≥{t}% [compact-overdue]: stop taking on new threads and run the"
               " compact-loop skill (Skill tool, name=compact-loop) now — a"
               " cache miss at this size re-writes the whole context at the"
               " write price.",
-    "now": "Context ≥{t}% [NOW]: the CLI forces a handoff-less compaction at"
+    "critical": "Context ≥{t}% [critical]: the CLI forces a handoff-less compaction at"
            " ~87% — run compact-loop immediately, before anything else.",
 }
 CTX_BAND_TEXT_JA = {
-    "comfort": "コンテキスト使用率 ≥{t}% [コンフォートゾーン]: ここから先は"
+    "ready": "コンテキスト使用率 ≥{t}% [圧縮可]: ここから先は"
                "きりの良い所で compact するのが最も安い選択です (compact 直後の"
                "充填は窓の約 8%)。急ぎではありません — 手元の作業を先に片付けて"
                "ください。ただし、きりの良い breakpoint を惰性で素通りしないで"
                "ください。",
-    "comfort_upper": "コンテキスト使用率 ≥{t}% [コンフォートゾーン上限]: 費用面で"
+    "optimal": "コンテキスト使用率 ≥{t}% [圧縮適期]: 費用面で"
                      "最適な compact 地点です。次のきりの良い breakpoint で"
                      " compact-loop skill (Skill tool, name=compact-loop) を実行し、"
                      "その前に重い作業へ着手しないでください。",
-    "past": "コンテキスト使用率 ≥{t}% [コンフォートゾーン通過]: 毎 turn の費用が"
+    "due": "コンテキスト使用率 ≥{t}% [圧縮期限]: 毎 turn の費用が"
             " compact の費用を上回り始めています。新規着手を止め、最寄りの"
             " breakpoint で compact-loop を実行してください。",
-    "enough": "コンテキスト使用率 ≥{t}% [いい加減にしろ]: 新しい thread の着手を"
+    "overdue": "コンテキスト使用率 ≥{t}% [期限超過]: 新しい thread の着手を"
               "止め、今すぐ compact-loop skill (Skill tool, name=compact-loop) を"
               "実行してください。この大きさで cache miss が起きると context 全体が"
               "書込料金で再課金されます。",
-    "now": "コンテキスト使用率 ≥{t}% [今すぐ]: CLI は約 87% で handoff なしの"
+    "critical": "コンテキスト使用率 ≥{t}% [緊急]: CLI は約 87% で handoff なしの"
            "強制 compact を行います。他の何よりも先に compact-loop を実行して"
            "ください。",
 }
@@ -171,37 +172,37 @@ CTX_BAND_TEXT_JA = {
 # A subagent's own advisory per band (it cannot compact itself; its leader
 # rotates it from a handoff).
 SUB_BAND_TEXT = {
-    "comfort": "Context ≥{t}% [comfort zone]: if substantial work remains, a"
+    "ready": "Context ≥{t}% [compact-ready]: if substantial work remains, a"
                " handoff at a round boundary is now cheaper than running on."
                " Keep working; state your fill in your next report to your"
                " spawner.",
-    "comfort_upper": "Context ≥{t}% [comfort zone, upper edge]: cost-optimal"
+    "optimal": "Context ≥{t}% [compact-optimal]: cost-optimal"
                      " handoff point — finish the unit in hand, write durable"
                      " state to disk, and report your fill with an offer to"
                      " hand off at the next round boundary.",
-    "past": "Context ≥{t}% [past the comfort zone]: write your handoff /"
+    "due": "Context ≥{t}% [compact-due]: write your handoff /"
             " durable state to disk now and tell your leader your load —"
             " hand off at this boundary.",
-    "enough": "Context ≥{t}% [ENOUGH]: take no new sub-tasks. Report your load"
+    "overdue": "Context ≥{t}% [compact-overdue]: take no new sub-tasks. Report your load"
               " and end your run with the handoff written; you cannot compact"
               " yourself.",
-    "now": "Context ≥{t}% [NOW]: stop and report immediately — the leader"
+    "critical": "Context ≥{t}% [critical]: stop and report immediately — the leader"
            " rotates you; you cannot compact yourself.",
 }
 SUB_BAND_TEXT_JA = {
-    "comfort": "コンテキスト使用率 ≥{t}% [コンフォートゾーン]: 残作業が多いなら、"
+    "ready": "コンテキスト使用率 ≥{t}% [圧縮可]: 残作業が多いなら、"
                "区切りで handoff して後継に渡す方が走り続けるより安くなりました。"
                "作業は続け、次の報告で現在の使用率を spawn 元に伝えてください。",
-    "comfort_upper": "コンテキスト使用率 ≥{t}% [コンフォートゾーン上限]: 費用面で"
+    "optimal": "コンテキスト使用率 ≥{t}% [圧縮適期]: 費用面で"
                      "最適な交代地点です。手元の単位を終えて永続状態をディスクに"
                      "書き、次の区切りで交代できると添えて使用率を報告してください。",
-    "past": "コンテキスト使用率 ≥{t}% [コンフォートゾーン通過]: handoff/永続状態を"
+    "due": "コンテキスト使用率 ≥{t}% [圧縮期限]: handoff/永続状態を"
             "今ディスクに書き、リーダーに使用率を伝えて、この区切りで交代して"
             "ください。",
-    "enough": "コンテキスト使用率 ≥{t}% [いい加減にしろ]: 新しい sub-task を"
+    "overdue": "コンテキスト使用率 ≥{t}% [期限超過]: 新しい sub-task を"
               "受けないでください。使用率を報告し、handoff を書いて run を終えて"
               "ください (subagent は自分では compact できません)。",
-    "now": "コンテキスト使用率 ≥{t}% [今すぐ]: 直ちに止まって報告してください。"
+    "critical": "コンテキスト使用率 ≥{t}% [緊急]: 直ちに止まって報告してください。"
            "交代はリーダーが行います (subagent は自分では compact できません)。",
 }
 
@@ -215,25 +216,25 @@ SUB_BAND_TEXT_JA = {
 SUBWATCH_ACTIVE_S = 900
 SUBWATCH_TAIL_BYTES = 131072
 SUBWATCH_TEXT = {
-    "comfort": "[comfort zone] if it has substantial work left, plan its"
+    "ready": "[compact-ready] if it has substantial work left, plan its"
                " handoff at a round boundary — a successor built from a"
                " handoff is cheaper than running on from here",
-    "comfort_upper": "[comfort zone, upper edge] cost-optimal rotation point"
+    "optimal": "[compact-optimal] cost-optimal rotation point"
                      " — plan its handoff at the next round boundary",
-    "past": "[past the comfort zone] expect its load report; rotate it at"
+    "due": "[compact-due] expect its load report; rotate it at"
             " this boundary",
-    "enough": "[ENOUGH] direct it to write its handoff and rotate now",
-    "now": "[NOW] direct it to STOP and hand off immediately",
+    "overdue": "[compact-overdue] direct it to write its handoff and rotate now",
+    "critical": "[critical] direct it to STOP and hand off immediately",
 }
 SUBWATCH_TEXT_JA = {
-    "comfort": "[コンフォートゾーン] 残作業が多いなら区切りでの handoff を"
+    "ready": "[圧縮可] 残作業が多いなら区切りでの handoff を"
                "計画してください (ここからは handoff からの後継の方が安い)",
-    "comfort_upper": "[コンフォートゾーン上限] 費用面で最適な交代地点です。"
+    "optimal": "[圧縮適期] 費用面で最適な交代地点です。"
                      "次の区切りで handoff を計画してください",
-    "past": "[コンフォートゾーン通過] 負荷報告が来るはずです。この区切りで"
+    "due": "[圧縮期限] 負荷報告が来るはずです。この区切りで"
             "交代させてください",
-    "enough": "[いい加減にしろ] handoff を書かせて今交代させてください",
-    "now": "[今すぐ] 即時停止と handoff を指示してください",
+    "overdue": "[期限超過] handoff を書かせて今交代させてください",
+    "critical": "[緊急] 即時停止と handoff を指示してください",
 }
 
 

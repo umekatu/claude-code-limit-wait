@@ -52,9 +52,10 @@ hooks/
                                advisory that tells the model to invoke the
                                limit-wait Skill NOW. The context line carries a
                                band label, and entering a band appends a
-                               one-time advisory: comfort 30 / comfort+ 40 /
-                               past comfort 50 / ENOUGH 60 / NOW 75 % of a 1M
-                               window (a subagent's NOW is 70; a 200K window
+                               one-time advisory: compact-ready 30 /
+                               compact-optimal 40 / compact-due 50 /
+                               compact-overdue 60 / critical 75 % of a 1M
+                               window (a subagent's critical is 70; a 200K window
                                uses 40/55/65/75/85). For a team leader it also
                                reports a subagent entering a band.
                                The user-facing line is English unless
@@ -209,7 +210,7 @@ the user to type `/compact`.
 ### How it fits together
 
 ```
- context band comfort+ or above (context-monitor)  or  dead end  or  phase break
+ context band compact-optimal or above (context-monitor)  or  dead end  or  phase break
                           │
                           ▼
               Skill(name="compact-loop")
@@ -360,8 +361,8 @@ cheaper.
    and the model answers `ok`. Then re-run without `--test`.
 
 6. **compact-loop** needs nothing beyond the two hooks. The Skill is
-   invoked by the model when context-monitor reports the comfort+ band or
-   above, at a
+   invoked by the model when context-monitor reports the compact-optimal
+   band or above, at a
    dead end, or at a phase break. The handoff lands in
    `<project>/.work/compact-handoff/` — add that directory to your
    `.gitignore` if the project is a repo.

@@ -28,9 +28,9 @@ concrete → do NOT fire regardless of triggers; use `TaskCreate` /
 commits / memory for the preservation need instead.
 
 - **Context pressure** — the context hook's band label reads
-  `comfort+` (≥40% of the window) or a higher band (`past comfort`,
-  `ENOUGH`, `NOW`). This is one trigger among three; each of the
-  others fires at any context level.
+  `compact-optimal` (≥40% of the window) or a higher band
+  (`compact-due`, `compact-overdue`, `critical`). This is one trigger
+  among three; each of the others fires at any context level.
 - **Cognitive dead-end** — same hypotheses recurring, new angles not
   surfacing.
 - **Phase break** — clean topic shift; current history would anchor
