@@ -13,11 +13,12 @@ wrong reading it, the message degrades to just the token count — the primary
 report must never break because of optional infrastructure.
 
 Dedup: per-session state file at ``~/.claude/.context-monitor-state/<sid>.json``
-remembers the last emitted *raw values* (tokens, percentages, reset epochs).
-If the new computation matches the saved state exactly, the hook returns
-without emitting anything — preventing identical-state spam across rapid tool
-chains. The countdown text changes every minute by definition and is excluded
-from the comparison so idle minutes don't trigger emissions.
+remembers the last emitted keys per segment — the ``EMIT_STEP_PCT``-wide
+percentage bucket (floor(pct / step)) and the reset epoch. A segment emits
+only when its bucket changes, i.e. when the value crosses a multiple of the
+step in either direction; the text shows the exact value at that moment.
+The countdown text changes every minute by definition and is excluded from
+the comparison so idle minutes don't trigger emissions.
 
 Band advisories: when an agent's context % enters a band of the five-band
 ladder (``band_ladder``: compact-ready 30 / compact-optimal 40 / compact-due
@@ -75,6 +76,13 @@ OAUTH_CACHE_MAX_AGE = 1800  # seconds; older cache → segment omitted
 # threshold, the skill exits with nothing_to_wait and the advisory loops.
 H5_CRITICAL = 95
 D7_CRITICAL = 99
+
+# Emission step for the four percentage segments (context, 5h, 7d, Fable
+# 7d): a segment re-emits when its value crosses a multiple of this many
+# percent (its floor(pct / step) bucket changes), in either direction. The
+# emitted text still shows the exact value. Band advisories and the critical
+# force-emits above are decided on the exact value, independent of the step.
+EMIT_STEP_PCT = 5
 
 # Context-window advisory bands for the LEADER (subagents can't run
 # compact-loop and get SUB_BAND_TEXT below instead). When an agent's
@@ -481,24 +489,29 @@ def fmt_limit(label: str, data: dict) -> str:
 def collect_state(tokens: int, window: int | None,
                   h5: dict | None, d7: dict | None,
                   f7d: dict | None = None) -> dict:
-    """Per-segment raw values used for dedup. Excludes time-relative fields.
+    """Per-segment dedup keys. Excludes time-relative fields.
 
     Four independent segments:
-      ``ctx`` — context-window usage (integer % when window is known, raw
-                tokens otherwise). Integer-% dedup means opus 1M re-emits
-                roughly every 10K tokens instead of every tool call.
-      ``h5``  — 5-hour rate-limit (percentage + reset epoch)
-      ``d7``  — 7-day rate-limit (percentage + reset epoch)
+      ``ctx`` — context-window usage (EMIT_STEP_PCT-wide % bucket when the
+                window is known, raw tokens otherwise). On a 1M window a
+                5-point bucket re-emits every ~50K tokens.
+      ``h5``  — 5-hour rate-limit (% bucket + reset epoch)
+      ``d7``  — 7-day rate-limit (% bucket + reset epoch)
       ``f7d`` — Fable-scoped weekly rate-limit (Fable/Mythos agents only)
-    Each segment is dedup'd independently so a 5h tick doesn't redundantly
-    re-emit the slow-moving 7d figure (or vice-versa).
+    A bucket is floor(pct / EMIT_STEP_PCT): a segment re-emits when its value
+    crosses a multiple of the step, up or down. Each segment is dedup'd
+    independently so a 5h tick doesn't redundantly re-emit the slow-moving 7d
+    figure (or vice-versa).
     """
-    ctx = {"p": int(round(tokens / window * 100))} if window else {"t": tokens}
+    def bucket(pct: float) -> int:
+        return int(pct // EMIT_STEP_PCT)
+
+    ctx = {"p": bucket(tokens / window * 100)} if window else {"t": tokens}
     return {
         "ctx": ctx,
-        "h5": {"p": round(h5["pct"]), "r": int(h5["reset"].timestamp())} if h5 else None,
-        "d7": {"p": round(d7["pct"]), "r": int(d7["reset"].timestamp())} if d7 else None,
-        "f7d": {"p": round(f7d["pct"]), "r": int(f7d["reset"].timestamp())} if f7d else None,
+        "h5": {"p": bucket(h5["pct"]), "r": int(h5["reset"].timestamp())} if h5 else None,
+        "d7": {"p": bucket(d7["pct"]), "r": int(d7["reset"].timestamp())} if d7 else None,
+        "f7d": {"p": bucket(f7d["pct"]), "r": int(f7d["reset"].timestamp())} if f7d else None,
     }
 
 

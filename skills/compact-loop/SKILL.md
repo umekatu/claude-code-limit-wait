@@ -148,7 +148,13 @@ Cross-reference with the task list (`~/.claude/tasks/<session_id>/`).
 What we are trying to achieve and why. Include behavioral constraints
 (safety rules, things NOT to do) as short bullets, and the successor's
 decision latitude: where they have discretion vs where they must ask
-the user (pending user questions also go in the task list).
+the user (pending user questions also go in the task list). If the
+project defines a standing deliverable/goal (its `CLAUDE.md`, memory,
+or a backlog's top-ranked item), state or reference it explicitly here
+— a standing permission the user gave (such as "investigate freely" or
+"spend the budget") is not the goal and must not stand in for it.
+State "no standing deliverable defined for this project" when none
+exists.
 
 ## Next concrete action
 What to do first and why, with file paths / commands / decision
