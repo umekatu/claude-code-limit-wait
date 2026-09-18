@@ -33,10 +33,14 @@ the next user prompt). `/clear` rotates the session_id, so its wake
 prompt rides the plain-text cron scheduled in `clear-mode.md` Step 5 —
 schedule that BEFORE submitting `/clear` here.
 
-It also does not detect whether a human is at the keyboard. The
-submitted line joins whatever text is already in the prompt box, so
-injecting while someone types merges the two into one submitted line.
-That check belongs to the caller.
+Before submitting it reads the CLI's prompt box off the console (the
+claude-restart skill's `prompt_box`: the row holding the console cursor)
+and refuses, exit 3, when typed text sits there — the submitted line
+would join that text into one submitted line. The CLI's greyed prompt
+suggestion is not typed text (caret at the start) and does not refuse.
+A human merely being near the keyboard is therefore not a reason to
+skip this script; a refusal is the moment to ask them to type the
+command instead.
 
 Launch as the LAST tool call of the turn, in the background, then end
 the turn: the default --pre-sleep 10 lets the turn finish so the
