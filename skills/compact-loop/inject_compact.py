@@ -6,18 +6,19 @@ WHAT THIS CAN SEND: the literal string `/compact`, or with --clear, the
 literal string `/clear`. Nothing else — both are constants in this file
 and no caller-supplied text is ever submitted.
 
-WHERE IT LANDS: the console input buffer is per-console, so the command
-reaches exactly the CLI processes attached to THIS process's console.
-The script requires that to be exactly one, and names it in its output.
-Zero means the command would land in a buffer no session reads; more
-than one means the target is ambiguous. Either way it refuses.
-
-LAUNCH IT WITH THE TOOL WHOSE SUBPROCESSES SHARE THE CLI'S CONSOLE.
-On a Windows CLI started from PowerShell that is the PowerShell tool;
-the Bash tool runs under a Git-bash console of its own, where no CLI is
-attached and a submitted line would be read by nobody. Run --dry-run
-first from any launcher you are unsure about: it reports the console
-membership without submitting.
+WHERE IT LANDS: the console input buffer of the CLI process that runs
+this session. The CLI exports its own pid to every tool subprocess as
+`CLAUDE_PID` (and the session id as `CLAUDE_CODE_SESSION_ID`); the
+script verifies that pid is a Claude CLI image, cross-checks
+`~/.claude/sessions/<pid>.json` against the session id, then detaches
+from its own console and attaches to the CLI's (`FreeConsole` +
+`AttachConsole`, the sequence the claude-restart skill submits `/exit`
+with). The launcher's console therefore does not matter: the Bash tool
+and the PowerShell tool both work, on either a Windows Terminal tab or a
+plain console. Without `CLAUDE_PID` in the environment the script falls
+back to the CLI processes on its own console and requires exactly one.
+Run --dry-run first when unsure: it resolves and attaches without
+submitting.
 
 WHY IT EXISTS: the window-shrink trigger (`trigger_compact.py`) reaches
 a session through settings-env hot-reload, which can stop working
@@ -165,6 +166,57 @@ def console_members(k32):
     return pids, clis
 
 
+def _session_of_pid(pid: int):
+    """sessionId recorded in ~/.claude/sessions/<pid>.json, or None."""
+    try:
+        import json
+        path = Path.home() / ".claude" / "sessions" / f"{pid}.json"
+        return json.loads(path.read_text(encoding="utf-8")).get("sessionId")
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
+def resolve_target(k32, console_pids, console_clis):
+    """The CLI to submit to: ((pid, image path), detail) or (None, reason).
+
+    Preferred source is CLAUDE_PID, which the CLI exports to its tool
+    subprocesses; its image must be a CLI binary, and when both the env
+    session id and sessions/<pid>.json are readable they must agree.
+    Without CLAUDE_PID, the CLI processes on this console are used and
+    must number exactly one."""
+    env_pid = os.environ.get("CLAUDE_PID")
+    if env_pid:
+        try:
+            pid = int(env_pid)
+        except ValueError:
+            return None, f"CLAUDE_PID={env_pid!r} is not a pid."
+        path = _image_path(k32, pid)
+        if not path:
+            return None, (f"CLAUDE_PID={pid} names no running process; the "
+                          f"session's CLI may have exited.")
+        if not CLI_IMAGE_RE.match(path.rsplit("\\", 1)[-1]):
+            return None, (f"CLAUDE_PID={pid} runs {path}, not a Claude CLI "
+                          f"image.")
+        env_sid = os.environ.get("CLAUDE_CODE_SESSION_ID")
+        file_sid = _session_of_pid(pid)
+        if env_sid and file_sid and env_sid != file_sid:
+            return None, (f"CLAUDE_PID={pid} is registered to session "
+                          f"{file_sid}, not this session ({env_sid}).")
+        where = ("on this console" if pid in console_pids
+                 else "on another console, attaching")
+        return (pid, path), f"from CLAUDE_PID, {where}"
+    if len(console_clis) == 1:
+        return console_clis[0], "the only CLI on this console (no CLAUDE_PID)"
+    if not console_clis:
+        return None, ("CLAUDE_PID is not set and no CLI process is attached "
+                      "to this console, so the command would be read by "
+                      "nobody.")
+    return None, (f"CLAUDE_PID is not set and {len(console_clis)} CLI "
+                  f"processes share this console "
+                  f"({[pid for pid, _ in console_clis]}); the target is "
+                  f"ambiguous.")
+
+
 def _key(ch: str, down: bool) -> _InputRecord:
     rec = _InputRecord()
     rec.EventType = KEY_EVENT
@@ -256,24 +308,25 @@ def main() -> int:
     for pid, path in clis:
         print(f"  CLI on this console: {pid} {path}")
 
-    if len(clis) != 1:
-        if not clis:
-            detail = ("no CLI process is attached to this console, so the "
-                      "command would be read by nobody. Launch from a tool "
-                      "whose subprocesses share the CLI's console (the "
-                      "PowerShell tool on a PowerShell-started CLI; the "
-                      "Bash tool gets its own Git-bash console).")
-        else:
-            detail = (f"{len(clis)} CLI processes share this console "
-                      f"({[pid for pid, _ in clis]}), so the target is "
-                      f"ambiguous and the command could reset the wrong "
-                      f"session.")
+    target, detail = resolve_target(k32, pids, clis)
+    if target is None:
         print(f"REFUSED: {detail}")
         log_line(cwd, f"inject_compact: REFUSED — {detail}")
         return 1
+    target_pid, target_path = target
+    print(f"target: pid {target_pid} ({target_path}) — {detail}")
 
-    target_pid, target_path = clis[0]
-    print(f"target: pid {target_pid} ({target_path})")
+    if target_pid not in pids:
+        k32.FreeConsole()
+        if not k32.AttachConsole(target_pid):
+            err = ctypes.get_last_error()
+            detail = (f"AttachConsole({target_pid}) failed with error {err}; "
+                      f"the CLI's console could not be reached from this "
+                      f"process.")
+            print(f"REFUSED: {detail}")
+            log_line(cwd, f"inject_compact: REFUSED — {detail}")
+            return 1
+        print(f"attached to the console of pid {target_pid}")
 
     if args.dry_run:
         print(f"dry run — would submit: {command}")

@@ -76,15 +76,16 @@ reads → this script launched via the PowerShell tool in background as
 the turn's last call → `/compact` fired on the idle prompt, session_id
 preserved, post-compact resume ran cleanly from the handoff.
 
-**Launch it with the tool whose subprocesses share the CLI's console.**
-The input buffer is per-console: the command reaches exactly the CLI
-processes attached to the launching process's console. On a Windows CLI
-started from PowerShell, the PowerShell tool shares that console and
-the Bash tool does not — it gets a Git-bash console with no CLI
-attached, where a submitted line is read by nobody. The script requires
-exactly one CLI on its console and names the target pid in its output;
-zero or several means it refuses. When unsure of a launcher, `--dry-run`
-from it first.
+**Either tool launches it.** The script targets this session's CLI by
+the `CLAUDE_PID` the CLI exports to its tool subprocesses, checks that
+the pid runs a Claude CLI image and belongs to this session
+(`~/.claude/sessions/<pid>.json` vs `CLAUDE_CODE_SESSION_ID`), and
+attaches to that process's console before writing — so the Bash tool
+and the PowerShell tool both work, whatever console the tool runs on.
+It names the target pid in its output and refuses when the pid is gone,
+is not a CLI, or belongs to another session. Without `CLAUDE_PID` it
+falls back to the CLI processes on its own console and needs exactly
+one. When unsure, `--dry-run` resolves and attaches without submitting.
 
 **Arm a wake first.** An injected `/compact` ends without a model
 turn: the post-compact instance starts only at the next wake — a user
