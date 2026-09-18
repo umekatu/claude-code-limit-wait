@@ -202,9 +202,15 @@ and note it in the handoff.
 
 - **4A — Knowledge**: promote durable learnings to memory — verified
   facts that took effort, user feedback (with Why / How to apply),
-  dead-ends, project state not derivable from code. Update existing
-  files rather than duplicating; refresh `MEMORY.md` pointers; rules
+  project state not derivable from code. Update existing files rather
+  than duplicating, and keep an entry's conditions / counterexamples /
+  exceptions when adding to it; refresh `MEMORY.md` pointers; rules
   belong in CLAUDE.md / references (INDEX.md in sync), not memory.
+  **Dead-ends** (a proposal tried or weighed and rejected this cycle) go
+  to `<project>/.work/rejected/{YYYY-MM-DD_slug}.md` per
+  `~/.claude/references/rejected_schema.md`: the filename carries the
+  date and the idea, the body carries the symptoms that would make
+  someone propose it again.
   **Self-promotion guardrail**: a lesson derived from your OWN
   apology / mistake-recognition this cycle goes through your
   mistake-handling procedure, not this step.
@@ -271,8 +277,11 @@ refusal says to re-read this skill and follow the steps in their order.
 **Both modes — before resuming work:**
 - `ToolSearch` any deferred tools you need (loaded schemas reset).
 - **Recon gate**: ~2-min topic-scoped check of the project's own
-  records (known-issues, prior audit notes, existing scripts) before
-  launching any investigation or building any tool.
+  records before launching any investigation or building any tool:
+  read `<project>/.work/CATALOG.md` in full if present, then grep
+  `<project>/.work/rejected/*.md`, `KNOWN_ISSUES.md` (if present),
+  prior audit notes and existing scripts with topic keywords, and Read
+  only the files that hit — never every rejected entry.
 - **Prior-cycle integrity verify**: Read each file named in the
   handoff's "Established facts" / "In-flight work" / "Ripple updates
   not yet applied" / "Documentation gaps" sections and cross-check
