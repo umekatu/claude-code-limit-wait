@@ -252,6 +252,21 @@ def submit(k32, command: str):
     return True, f"{written.value} records"
 
 
+def prompt_box_state(k32):
+    """(text, caret_at_start) of the attached console's prompt box, via the
+    claude-restart skill's reader; ('', False) when it cannot be read."""
+    try:
+        import importlib.util
+        rs_path = (Path.home() / ".claude" / "skills" / "claude-restart"
+                   / "restart_session.py")
+        spec = importlib.util.spec_from_file_location("_rs", rs_path)
+        rs = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(rs)
+        return rs.prompt_box(k32)
+    except Exception:
+        return "", False
+
+
 def main() -> int:
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -329,6 +344,11 @@ def main() -> int:
         print(f"attached to the console of pid {target_pid}")
 
     if args.dry_run:
+        text, caret_at_start = prompt_box_state(k32)
+        state = ("empty" if not text else
+                 f"the CLI's suggestion {text!r} (not typed)" if caret_at_start
+                 else f"typed text {text!r} (would refuse)")
+        print(f"dry run — prompt box: {state}")
         print(f"dry run — would submit: {command}")
         print("dry run: nothing was submitted.")
         return 0
@@ -337,6 +357,18 @@ def main() -> int:
         print(f"pre-sleep {args.pre_sleep}s before submitting {command} "
               f"(end the launching turn now)", flush=True)
         time.sleep(args.pre_sleep)
+
+    text, caret_at_start = prompt_box_state(k32)
+    if text and not caret_at_start:
+        detail = f"prompt box holds typed text {text!r}; nothing submitted"
+        print(f"REFUSED: {detail}. Ask the user to type {command} instead"
+              + (" (with the absolute handoff path in the same message)."
+                 if args.clear else "."))
+        log_line(cwd, f"inject_compact: REFUSED — {detail}")
+        return 3
+    if text and caret_at_start:
+        print(f"prompt box shows the CLI's suggestion {text!r} (caret at the "
+              f"start); not typed, going on")
 
     ok, detail = submit(k32, command)
     if not ok:

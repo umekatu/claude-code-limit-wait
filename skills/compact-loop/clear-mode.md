@@ -15,10 +15,13 @@ Schedule it BEFORE the reset. After the step 3 pre-flight:
    path-embedded template below, with enough lead time to land after
    the reset.
 2. Submit `/clear` — with `inject_compact.py --clear`, launched as
-   `recovery.md`'s "Console-input reset" section describes and only
-   while the user is away from the keyboard. If that script refuses,
-   or the user is present, ask them to type `/clear` instead,
-   including the absolute handoff path in the same message.
+   `recovery.md`'s "Console-input reset" section describes. The script
+   reads the prompt box first and refuses (exit 3) when typed text sits
+   there, so a human near the keyboard is not a reason to skip it, and
+   other sessions on the machine are irrelevant (it targets this
+   session's CLI by pid). Only if it refuses, ask the user to type
+   `/clear` instead, including the absolute handoff path in the same
+   message.
 3. Idle. If a Stop hook of yours blocks the first Stop, idle through
    it — that is expected here.
 
