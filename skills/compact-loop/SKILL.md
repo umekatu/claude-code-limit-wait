@@ -58,10 +58,11 @@ TaskList entries, or live background Bash.
 2. **`/clear` (variant, mechanics in `clear-mode.md`)** — rotates
    session_id, discards the conversation entirely. Use when history
    itself is the liability: cognitive dead-end (rut erasure), phase
-   break (stale framings dropped), summary-as-noise (misconception
-   baked into past summaries), or CLAUDE.md edited this cycle and the
-   new rule must be live next cycle (CLAUDE.md does not hot-reload;
-   hooks/references do). The handoff file is the SOLE survivor — if it
+   break (stale framings dropped), or summary-as-noise (misconception
+   baked into past summaries). A CLAUDE.md edit needs no `/clear`:
+   `/compact` re-reads instruction files and injects each changed one
+   as the replacement of its earlier copy (hooks/references load fresh
+   on every use). The handoff file is the SOLE survivor — if it
    cannot be self-contained, use `/compact`. Valid at any context
    level.
 3. **Manual new session** — NOT this skill. Stop the loop and tell the
