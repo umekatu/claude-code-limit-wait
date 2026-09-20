@@ -193,8 +193,10 @@ while True:
         done = consecutive_pings(transcript)
         if done >= MAX_CONSECUTIVE_PINGS:
             sys.exit(0)      # the run is over; say nothing and let the session rest
-        msg = (f"just keeping this session's prompt cache warm (idle {int(idle // 60)} min). "
-               "Nothing happened and nothing is needed from you or the user. "
+        msg = ("just keeping this session's prompt cache warm. "
+               f"Local time {time.strftime('%Y-%m-%d %H:%M')}; {int(idle // 60)} min since "
+               "this session's last activity. "
+               "This ping brings no news and needs nothing from you or the user. "
                "Reply with the single word ok and go back to idling.")
         if done + 1 == HINT_AT_PING:
             msg += HINT
